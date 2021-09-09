@@ -1,4 +1,4 @@
-import { Component } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import PropTypes from 'prop-types';
 import Spinner from '../Loader/Spinner';
@@ -8,21 +8,20 @@ import api from '../../api/apiService';
 import s from './ImageGallery.module.css';
 import Modal from '../Modal/Modal';
 
-class ImageGallery extends Component {
-  state = {
-    pictures: null,
-    error: null,
-    status: 'idle',
-    page: 1,
-    isModalOpen: false,
-    modalUrl: '',
-  };
+function ImageGallery({ query }) {
+  const [pictures, setPictures] = useState(null);
+  const [error, setError] = useState(null);
+  const [status, setStatus] = useState('idle');
+  const [page, setPage] = useState(1);
+  const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [modalUrl, setModalUrl] = useState('');
 
-  componentDidUpdate(prevProps, prevState) {
-    const { query } = this.props;
-    const { page } = this.state;
-    if (prevProps.query !== query) {
-      this.setState({ pictures: null, status: 'pending', page: 1 });
+  useEffect(() => {
+    // setPictures(null);
+    // setPage(1);
+
+    if (query) {
+      setStatus('pending');
 
       api
         .getPicturesByQuery(query, page)
@@ -30,24 +29,22 @@ class ImageGallery extends Component {
           if (pictures.total === 0) {
             return toast.error(`No result for ${query}. Try another query`);
           }
-          this.setState({
-            pictures: pictures.hits,
-          });
+          setPictures([...pictures.hits]);
         })
-        .catch(error => this.setState({ error, status: 'rejected' }))
-        .finally(() =>
-          this.setState(prevState => {
-            return { status: 'idle', page: prevState.page + 1 };
-          }),
-        );
+        .catch(error => {
+          setError(error);
+          setStatus('rejected');
+        })
+        .finally(() => {
+          setPage(page => page + 1);
+          setStatus('idle');
+        });
     }
-  }
+    console.log('finally', pictures);
+  }, [query]);
 
-  getNextPagePictures = () => {
-    const { page } = this.state;
-    const { query } = this.props;
-
-    this.setState({ status: 'pending' });
+  const getNextPagePictures = query => {
+    setStatus('pending');
 
     api
       .getPicturesByQuery(query, page)
@@ -57,78 +54,69 @@ class ImageGallery extends Component {
           toast.warning(`No more pictures for "${query}" query`);
           return;
         }
-        this.setState(prevState => {
-          return {
-            pictures: [...prevState.pictures, ...pictures.hits],
-            page: prevState.page + 1,
-          };
-        });
+        setPictures(pictures => [...pictures, pictures.hits]);
+        setPage(page => page + 1);
         window.scrollTo({
           top: document.documentElement.scrollHeight,
           behavior: 'smooth',
         });
       })
-      .catch(error => this.setState({ error, status: 'rejected' }))
-      .finally(() => this.setState({ status: 'idle' }));
+      .catch(error => {
+        setError(error);
+        setStatus('rejected');
+      })
+      .finally(() => {
+        setStatus('idle');
+      });
   };
 
-  toggleModal = url => {
-    this.setState(prevState => {
-      return {
-        isModalOpen: !prevState.isModalOpen,
-        modalUrl: url,
-      };
-    });
+  const toggleModal = url => {
+    setModalIsOpen(!modalIsOpen);
+    setModalUrl(url);
   };
 
-  render() {
-    const { pictures, error, status, isModalOpen, modalUrl } = this.state;
+  if (status === 'idle') {
+    return (
+      <>
+        <ul className={s.ImageGallery}>
+          {pictures &&
+            pictures.map(picture => (
+              <ImageGalleryItem
+                key={picture.id}
+                url={picture.webformatURL}
+                tags={picture.tags}
+                modalUrl={picture.largeImageURL}
+                onClick={toggleModal}
+              />
+            ))}
+        </ul>
+        {pictures && <Button onClick={getNextPagePictures} />}
+        {modalIsOpen && <Modal closeModal={toggleModal} url={modalUrl} />}
+      </>
+    );
+  }
 
-    if (status === 'idle') {
-      return (
-        <>
-          <ul className={s.ImageGallery}>
-            {pictures &&
-              pictures.map(picture => (
-                <ImageGalleryItem
-                  key={picture.id}
-                  url={picture.webformatURL}
-                  tags={picture.tags}
-                  modalUrl={picture.largeImageURL}
-                  onClick={this.toggleModal}
-                />
-              ))}
-          </ul>
-          {pictures && <Button onClick={this.getNextPagePictures} />}
-          {isModalOpen && (
-            <Modal closeModal={this.toggleModal} url={modalUrl} />
-          )}
-        </>
-      );
-    }
+  if (status === 'rejected') {
+    return <h2>{error.message}</h2>;
+  }
 
-    if (status === 'rejected') {
-      return <h2>{error.message}</h2>;
-    }
-
-    if (status === 'pending') {
-      return (
-        <>
-          <ul className={s.ImageGallery}>
-            {pictures &&
-              pictures.map(picture => (
-                <ImageGalleryItem
-                  key={picture.id}
-                  url={picture.webformatURL}
-                  tags={picture.tags}
-                />
-              ))}
-          </ul>
-          <Spinner />
-          <Button onClick={this.getNextPagePictures} />
-        </>
-      );
-    }
+  if (status === 'pending') {
+    return (
+      <>
+        <ul className={s.ImageGallery}>
+          {pictures &&
+            pictures.map(picture => (
+              <ImageGalleryItem
+                key={picture.id}
+                url={picture.webformatURL}
+                tags={picture.tags}
+              />
+            ))}
+        </ul>
+        <Spinner />
+        <Button onClick={getNextPagePictures} />
+      </>
+    );
   }
 }
 
