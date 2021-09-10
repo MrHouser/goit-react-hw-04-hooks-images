@@ -8,54 +8,56 @@ import api from '../../api/apiService';
 import s from './ImageGallery.module.css';
 import Modal from '../Modal/Modal';
 
+const Status = {
+  IDLE: 'idle',
+  PENDING: 'pending',
+  RESOLVED: 'resolved',
+  REJECTED: 'rejected',
+};
+
 function ImageGallery({ query }) {
   const [pictures, setPictures] = useState(null);
   const [error, setError] = useState(null);
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState(Status.IDLE);
   const [page, setPage] = useState(1);
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [modalUrl, setModalUrl] = useState('');
 
   useEffect(() => {
-    // setPictures(null);
-    // setPage(1);
-
-    if (query) {
-      setStatus('pending');
-
-      api
-        .getPicturesByQuery(query, page)
-        .then(pictures => {
-          if (pictures.total === 0) {
-            return toast.error(`No result for ${query}. Try another query`);
-          }
-          setPictures([...pictures.hits]);
-        })
-        .catch(error => {
-          setError(error);
-          setStatus('rejected');
-        })
-        .finally(() => {
-          setPage(page => page + 1);
-          setStatus('idle');
-        });
+    if (!query) {
+      return;
     }
-    console.log('finally', pictures);
+    setStatus(Status.PENDING);
+
+    api
+      .getPicturesByQuery(query, 1)
+      .then(pictures => {
+        if (pictures.total === 0) {
+          return toast.error(`No result for "${query}". Try another query`);
+        }
+        setPictures(pictures.hits);
+      })
+      .catch(error => {
+        setError(error);
+        setStatus(Status.REJECTED);
+      })
+      .finally(() => {
+        setStatus(Status.RESOLVED);
+        setPage(2);
+      });
   }, [query]);
 
-  const getNextPagePictures = query => {
+  const getNextPagePictures = () => {
     setStatus('pending');
 
     api
       .getPicturesByQuery(query, page)
-      .then(pictures => {
-        if (pictures.hits.length === 0) {
-          console.log('lenght 0');
+      .then(result => {
+        if (result.hits.length === 0) {
           toast.warning(`No more pictures for "${query}" query`);
           return;
         }
-        setPictures(pictures => [...pictures, pictures.hits]);
-        setPage(page => page + 1);
+        setPictures(pictures => [...pictures, ...result.hits]);
         window.scrollTo({
           top: document.documentElement.scrollHeight,
           behavior: 'smooth',
@@ -63,11 +65,12 @@ function ImageGallery({ query }) {
       })
       .catch(error => {
         setError(error);
-        setStatus('rejected');
+        setStatus(Status.REJECTED);
       })
       .finally(() => {
-        setStatus('idle');
+        setPage(page + 1);
       });
+    setStatus(Status.RESOLVED);
   };
 
   const toggleModal = url => {
@@ -75,7 +78,11 @@ function ImageGallery({ query }) {
     setModalUrl(url);
   };
 
-  if (status === 'idle') {
+  if (status === Status.IDLE) {
+    return null;
+  }
+
+  if (status === Status.RESOLVED || status === Status.PENDING) {
     return (
       <>
         <ul className={s.ImageGallery}>
@@ -90,33 +97,16 @@ function ImageGallery({ query }) {
               />
             ))}
         </ul>
+        {status === Status.PENDING && <Spinner />}
         {pictures && <Button onClick={getNextPagePictures} />}
+
         {modalIsOpen && <Modal closeModal={toggleModal} url={modalUrl} />}
       </>
     );
   }
 
-  if (status === 'rejected') {
+  if (status === Status.REJECTED) {
     return <h2>{error.message}</h2>;
-  }
-
-  if (status === 'pending') {
-    return (
-      <>
-        <ul className={s.ImageGallery}>
-          {pictures &&
-            pictures.map(picture => (
-              <ImageGalleryItem
-                key={picture.id}
-                url={picture.webformatURL}
-                tags={picture.tags}
-              />
-            ))}
-        </ul>
-        <Spinner />
-        <Button onClick={getNextPagePictures} />
-      </>
-    );
   }
 }
 
